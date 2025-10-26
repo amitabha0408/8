@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>妙好人教育學院課堂即時互動系統</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Noto Sans TC (Inter 的替代，更適合中文) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        /* 自定義樣式 */
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f7f9fb;
+            color: #333;
+        }
+        .main-card {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 0 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .answer-button {
+            transition: all 0.2s ease-in-out;
+            transform: scale(1);
+        }
+        .answer-button:hover:not(.disabled) {
+            transform: scale(1.03);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        /* 繪圖畫布容器 */
+        #drawingCanvas {
+            border: 2px solid #ccc;
+            touch-action: none; /* 禁用瀏覽器默認的觸控行為 */
+        }
+        .student-result-item {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 1rem;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px dashed #e0e0e0;
+        }
+
+        /* --- 象棋卜卦樣式 (從 生成卦象.txt 引入) --- */
+        /* 自定義圓形棋子樣式 */
+        .piece-circle {
+            width: 3.5rem; /* Adjusted for smaller container */
+            height: 3.5rem; /* Adjusted for smaller container */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            font-size: 1.5rem; /* Adjusted size */
+            font-weight: 700;
+            line-height: 1;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .piece-circle:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        /* 紅棋樣式 (陽) */
+        .red-piece {
+            background-color: #A31E22; /* 深紅色 */
+            color: #FFD700; /* 金黃色字體 */
+            border: 3px solid #FFD700;
+        }
+
+        /* 黑棋樣式 (陰) */
+        .black-piece {
+            background-color: #2D3748; /* 深藍灰色 */
+            color: #C0C0C0; /* 銀色字體 */
+            border: 3px solid #C0C0C0;
+        }
+
+        /* 卦象佈局 (5個棋子) */
+        .guaxiang-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 0.25rem;
+            width: 14rem; /* 固定寬度，保持佈局穩定 */
+            height: 14rem; /* 固定高度 */
+            margin: 1rem auto;
+            border: 1px solid #ccc;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+        }
+        /* 卦象位置編號 */
+        .guaxiang-grid > div:nth-child(1) { grid-area: 2 / 2 / 3 / 3; } /* Center: 中間 */
+        .guaxiang-grid > div:nth-child(2) { grid-area: 2 / 1 / 3 / 2; } /* Left: 左邊 */
+        .guaxiang-grid > div:nth-child(3) { grid-area: 2 / 3 / 3 / 4; } /* Right: 右邊 */
+        .guaxiang-grid > div:nth-child(4) { grid-area: 1 / 2 / 2 / 3; } /* Top: 上面 */
+        .guaxiang-grid > div:nth-child(5) { grid-area: 3 / 2 / 4 / 3; } /* Bottom: 下面 */
+    </style>
+</head>
+<body>
+
+    <div id="app" class="min-h-screen p-4 md:p-8 flex items-center justify-center">
+        <!-- 應用程式主容器 -->
+        <div id="content-container" class="w-full max-w-4xl bg-white p-6 md:p-10 rounded-xl main-card">
+            <!-- 標題已更新 -->
+            <h1 class="text-3xl md:text-4xl font-bold text-center text-indigo-600 mb-8">妙好人教育學院課堂即時互動系統</h1>
+            
+            <!-- 初始入口畫面 -->
+            <div id="view-home" class="view-panel space-y-6 text-center">
+                <p class="text-lg text-gray-600">請選擇您的角色</p>
+                <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-6 justify-center">
+                    <button onclick="changeView('teacher')" class="w-full md:w-60 py-4 px-8 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300">
+                        教師入口
+                    </button>
+                    <button onclick="changeView('student-login')" class="w-full md:w-60 py-4 px-8 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                        學員入口
+                    </button>
+                </div>
+            </div>
+
+            <!-- 教師端介面 -->
+            <div id="view-teacher" class="view-panel space-y-6 hidden">
+                <h2 class="text-2xl font-semibold mb-4 text-center">教師控制台</h2>
+                <div id="teacher-mode-menu" class="space-y-4">
+                    <p class="text-lg font-medium text-gray-700 mb-4">請選擇要啟動的互動模式:</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <button onclick="startInteraction('A')" class="py-4 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 transition duration-300">A. 是非題 (True/False)</button>
+                        <button onclick="startInteraction('B')" class="py-4 bg-purple-500 text-white font-bold rounded-lg hover:bg-purple-600 transition duration-300">B. 選擇題 (Multiple Choice)</button>
+                        <button onclick="startInteraction('C')" class="py-4 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 transition duration-300">C. 文字題 (Text Input)</button>
+                        <button onclick="startInteraction('D')" class="py-4 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition duration-300">D. 卦象題 (Drawing Board)</button>
+                    </div>
+                </div>
+
+                <!-- 互動監看區 -->
+                <div id="teacher-monitoring" class="hidden">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <h3 id="current-mode-title" class="text-xl font-bold text-indigo-700"></h3>
+                        <button onclick="endInteraction()" class="py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-300">
+                            結束互動
+                        </button>
+                    </div>
+                    
+                    <div id="student-results-list" class="space-y-2 max-h-96 overflow-y-auto p-2 border rounded-lg bg-gray-50">
+                        <!-- 學生即時結果將顯示在此 -->
+                        <p class="text-gray-500 text-center">等待學生作答...</p>
+                    </div>
+                </div>
+                
+                <!-- 卦象生成工具區塊 (新增) -->
+                <div class="mt-8 pt-6 border-t border-gray-200">
+                    <h3 class="text-xl font-semibold mb-4 text-center text-red-600">
+                        一鍵生成卦象工具 (教師輔助)
+                    </h3>
+                    <div class="flex justify-center mb-4">
+                        <button
+                            onclick="executeDivination()"
+                            class="w-full sm:w-80 px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300 transform hover:scale-[1.02]"
+                        >
+                            一鍵生成卦象
+                        </button>
+                    </div>
+
+                    <!-- 卦象顯示區 -->
+                    <div id="divination-result-area" class="p-4 bg-yellow-50 rounded-lg border border-yellow-200 hidden">
+                        <p class="text-center text-sm font-medium text-gray-700 mb-2">
+                            卜卦時間 (UTC+8): <span id="teacher-datetime-output"></span>
+                        </p>
+                        <div class="guaxiang-grid" id="teacher-guaxiang-board">
+                            <!-- 棋子將由 JavaScript 渲染至此 -->
+                        </div>
+                        <div id="teacher-guaxiang-details" class="mt-4 space-y-1 text-sm text-gray-700">
+                            <!-- 卦象詳細解釋將顯示在此 -->
+                        </div>
+                    </div>
+                </div>
+                
+                <p id="teacher-user-id" class="text-xs text-gray-400 mt-4 break-words">教師用戶ID: 載入中...</p>
+            </div>
+
+            <!-- 學生登入介面 -->
+            <div id="view-student-login" class="view-panel space-y-4 hidden text-center">
+                <h2 class="text-2xl font-semibold mb-6">學員身份識別</h2>
+                <input type="text" id="student-name-input" placeholder="請輸入您的姓名 (識別 ID)" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                <button onclick="studentLogin()" class="w-full py-3 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition duration-300">
+                    進入系統
+                </button>
+            </div>
+
+            <!-- 學生端主介面 -->
+            <div id="view-student" class="view-panel space-y-6 hidden">
+                <p id="student-display-name" class="text-lg font-medium text-center text-indigo-600 border-b pb-3"></p>
+                
+                <!-- 學生等待畫面 -->
+                <div id="student-waiting" class="text-center p-10 bg-gray-100 rounded-lg shadow-inner">
+                    <svg class="mx-auto h-12 w-12 text-gray-400 animate-pulse" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p class="mt-4 text-xl font-medium text-gray-700">請等待老師開始互動...</p>
+                </div>
+
+                <!-- 學生互動介面容器 -->
+                <div id="student-interaction-area">
+                    <!-- A. 是非題 -->
+                    <div id="student-mode-A" class="student-mode-panel hidden space-y-4">
+                        <h3 class="text-xl font-semibold text-center text-blue-600">是非題：請選擇</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <button id="btn-a-true" onclick="submitAnswer('O')" class="answer-button py-8 text-4xl font-black rounded-lg text-white bg-green-500 hover:bg-green-600 transition duration-300">Ｏ</button>
+                            <button id="btn-a-false" onclick="submitAnswer('X')" class="answer-button py-8 text-4xl font-black rounded-lg text-white bg-red-500 hover:bg-red-600 transition duration-300">Ｘ</button>
+                        </div>
+                    </div>
+
+                    <!-- B. 選擇題 -->
+                    <div id="student-mode-B" class="student-mode-panel hidden space-y-4">
+                        <h3 class="text-xl font-semibold text-center text-purple-600">選擇題：請點選號碼</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <button id="btn-b-1" onclick="submitAnswer('1')" class="answer-button py-8 text-4xl font-black rounded-lg text-white bg-indigo-500 hover:bg-indigo-600 transition duration-300">1</button>
+                            <button id="btn-b-2" onclick="submitAnswer('2')" class="answer-button py-8 text-4xl font-black rounded-lg text-white bg-yellow-500 hover:bg-yellow-600 transition duration-300">2</button>
+                            <button id="btn-b-3" onclick="submitAnswer('3')" class="answer-button py-8 text-4xl font-black rounded-lg text-white bg-pink-500 hover:bg-pink-600 transition duration-300">3</button>
+                            <button id="btn-b-4" onclick="submitAnswer('4')" class="answer-button py-8 text-4xl font-black rounded-lg text-white bg-teal-500 hover:bg-teal-600 transition duration-300">4</button>
+                        </div>
+                    </div>
+
+                    <!-- C. 文字題 -->
+                    <div id="student-mode-C" class="student-mode-panel hidden space-y-4">
+                        <h3 class="text-xl font-semibold text-center text-orange-600">文字題：請輸入內容</h3>
+                        <textarea id="text-input-area" rows="6" placeholder="在此輸入您的答案..." class="w-full p-4 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 resize-none"></textarea>
+                        <button onclick="submitTextAnswer()" class="w-full py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition duration-300">
+                            送出文字答案
+                        </button>
+                        <div id="text-submit-message" class="text-center text-sm text-gray-500 mt-2"></div>
+                    </div>
+
+                    <!-- D. 卦象題 (繪圖板) -->
+                    <div id="student-mode-D" class="student-mode-panel hidden space-y-4">
+                        <h3 class="text-xl font-semibold text-center text-red-600">卦象題：請繪製卦象</h3>
+                        
+                        <!-- 繪圖工具列 -->
+                        <div class="flex flex-wrap items-center justify-center p-3 bg-gray-100 rounded-lg space-x-2 md:space-x-4">
+                            <!-- 顏色選擇 -->
+                            <span class="text-sm font-medium">顏色:</span>
+                            <button onclick="setPen('black')" class="w-6 h-6 rounded-full bg-black border-2 border-gray-600 active-pen" title="黑色"></button>
+                            <button onclick="setPen('red')" class="w-6 h-6 rounded-full bg-red-600 border-2 border-transparent" title="紅色"></button>
+                            <button onclick="setPen('blue')" class="w-6 h-6 rounded-full bg-blue-600 border-2 border-transparent" title="藍色"></button>
+                            
+                            <!-- 粗細選擇 -->
+                            <span class="text-sm font-medium ml-4">粗細:</span>
+                            <button onclick="setLineWidth(3)" class="w-4 h-4 rounded-full bg-gray-700 active-width" title="細"></button>
+                            <button onclick="setLineWidth(8)" class="w-6 h-6 rounded-full bg-gray-700" title="中"></button>
+                            <button onclick="setLineWidth(15)" class="w-8 h-8 rounded-full bg-gray-700" title="粗"></button>
+                            
+                            <!-- 橡皮擦 -->
+                            <button onclick="setEraser()" class="py-1 px-3 bg-yellow-400 text-gray-800 rounded-lg text-sm font-medium hover:bg-yellow-500 transition duration-300">
+                                橡皮擦
+                            </button>
+                            <button onclick="clearCanvas()" class="py-1 px-3 bg-gray-400 text-white rounded-lg text-sm font-medium hover:bg-gray-500 transition duration-300">
+                                清空
+                            </button>
+                        </div>
+
+                        <!-- 畫布 -->
+                        <canvas id="drawingCanvas" width="700" height="300" class="w-full h-auto bg-white rounded-lg shadow-inner"></canvas>
+                        
+                        <!-- 送出按鈕 -->
+                        <button id="submit-drawing-btn" onclick="submitDrawing()" class="w-full py-3 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition duration-300">
+                            送出卦象 (上傳圖片)
+                        </button>
+                        <div id="drawing-submit-message" class="text-center text-sm text-gray-500 mt-2"></div>
+                    </div>
+                </div>
+                <p id="student-user-id" class="text-xs text-gray-400 mt-4 break-words">學員用戶ID: 載入中...</p>
+            </div>
+            
+            <!-- 錯誤/載入訊息 -->
+            <div id="loading-message" class="text-center text-indigo-500 font-semibold hidden">
+                <p>系統載入中，請稍候...</p>
+            </div>
+            <div id="error-message" class="text-center text-red-500 font-semibold hidden">
+                <p>發生錯誤，請檢查您的網路連線或 Firebase 設定。</p>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, writeBatch, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // 設定 Firestore 紀錄等級 (Debug)
+        setLogLevel('Debug');
+
+        // --- 全域變數初始化 ---
+        let app;
+        let db;
+        let auth;
+        let storage;
+        let currentUserId = null;
+        let studentName = null;
+        let activeMode = 'waiting'; // 'waiting', 'A', 'B', 'C', 'D'
+        let currentView = 'home'; // 'home', 'teacher', 'student-login', 'student'
+        let unsubscribeTeacherControl = null;
+        let unsubscribeStudentAnswers = null;
+
+        // --- 象棋卜卦數據與變數 (從 生成卦象.txt 引入) ---
+        const ALL_PIECES = [
+            { name: "帥", char: "帥", color: "紅", type: "將", element: "金", organ: "肺/大腸", meaning: "自我/核心目標" },
+            { name: "將", char: "將", color: "黑", type: "將", element: "金", organ: "肺/大腸", meaning: "挑戰/對手核心" },
+            { name: "仕", char: "仕", color: "紅", type: "士", element: "金", organ: "肺/大腸", meaning: "名聲/權力/貴人" },
+            { name: "士", char: "士", color: "黑", type: "士", element: "金", organ: "肺/大腸", meaning: "規範/制度/框架" },
+            { name: "相", char: "相", color: "紅", type: "象", element: "火", organ: "心/小腸", meaning: "情緒/內在/財產" },
+            { name: "象", char: "象", color: "黑", type: "象", element: "火", organ: "心/小腸", meaning: "壓力/耗損/困擾" },
+            { name: "俥", char: "俥", color: "紅", type: "車", element: "木", organ: "肝/膽", meaning: "行動力/能量/外援" },
+            { name: "車", char: "車", color: "黑", type: "車", element: "木", organ: "肝/膽", meaning: "障礙/拖延/考驗" },
+            { name: "傌", char: "傌", color: "紅", type: "馬", element: "木", organ: "心包/三焦", meaning: "人際/溝通/變動" },
+            { name: "馬", char: "馬", color: "黑", type: "馬", element: "木", organ: "心包/三焦", meaning: "小人/是非/阻礙" },
+            { name: "炮", char: "炮", color: "紅", type: "炮", element: "水", organ: "腎/膀胱", meaning: "爆發力/突破/貴人" },
+            { name: "包", char: "包", color: "黑", type: "炮", element: "水", organ: "腎/膀胱", meaning: "潛藏/隱憂/是非" },
+            { name: "兵", char: "兵", color: "紅", type: "兵", element: "土", organ: "脾/胃", meaning: "踏實/成果/付出" },
+            { name: "卒", char: "卒", color: "黑", type: "兵", element: "土", organ: "脾/胃", meaning: "消耗/壓力/辛勞" },
+        ];
+
+        // 卜卦位置及其代表意義
+        const POSITIONS = [
+            { id: 'center', name: "中間", meaning: "主狀態、自我", detail: "代表您當前的**主狀態、自我**與核心問題所在。" },
+            { id: 'left', name: "左邊", meaning: "平輩男/事業", detail: "代表**平輩男性、工作/事業**上的外在動能與助力。" },
+            { id: 'right', name: "右邊", meaning: "平輩女/財富", detail: "代表**平輩女性、財富/資源**上的內在儲備與穩定度。" },
+            { id: 'top', name: "上面", meaning: "長輩/上司/過去", detail: "代表**長輩、師長、上司**或過去的影響與根源。" },
+            { id: 'bottom', name: "下面", meaning: "晚輩/部屬/未來", detail: "代表**晚輩、部屬、子孫**或未來的發展與潛力。" },
+        ];
+
+        let drawnPieces = []; // 儲存本次卜卦的棋子結果
+
+        // --- 使用者提供的 Firebase 配置 (作為備用) ---
+        const USER_PROVIDED_CONFIG = {
+            apiKey: "AIzaSyAz89tuv85QckiuSp9ee0f-iB8lPUsajew",
+            authDomain: "chess-6a151.firebaseapp.com",
+            projectId: "chess-6a151",
+            storageBucket: "chess-6a151.firebasestorage.app",
+            messagingSenderId: "671800080231",
+            appId: "1:671800080231:web:3795577590eeabfd3be1c2"
+        };
+
+        // 1. 判斷使用平台提供的變數還是使用者提供的配置
+        let finalAppId;
+        let finalFirebaseConfig;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (typeof __app_id !== 'undefined' && typeof __firebase_config !== 'undefined') {
+            // 優先使用 Canvas 平台提供的配置
+            finalAppId = __app_id;
+            finalFirebaseConfig = JSON.parse(__firebase_config);
+        } else if (USER_PROVIDED_CONFIG.projectId) {
+            // 否則，使用使用者提供的配置 (用於外部測試)
+            // 使用 projectId 作為 app_id 的 fallback (雖然不完全等同，但可用於路徑區分)
+            finalAppId = USER_PROVIDED_CONFIG.projectId; 
+            finalFirebaseConfig = USER_PROVIDED_CONFIG;
+            console.warn("⚠️ 正在使用使用者提供的 Firebase 配置，而非平台自動注入的配置。");
+        } else {
+            finalAppId = 'default-app-id';
+            finalFirebaseConfig = null;
+        }
+
+        // ====== 路徑修正：確保 Collection 為奇數段落，Document 為偶數段落 ======
+        // Document Path (6 segments)
+        const CONTROL_DOC_PATH = `artifacts/${finalAppId}/public/data/controls/teacher_control`; 
+        // Collection Path (5 segments)
+        const ANSWERS_COL_PATH = `artifacts/${finalAppId}/public/data/answers_col`; 
+
+        // --- Firebase 初始化和認證 ---
+        window.addEventListener('load', async () => {
+            document.getElementById('loading-message').classList.remove('hidden');
+
+            if (!finalFirebaseConfig) {
+                console.error("Firebase 配置未載入。");
+                document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('loading-message').classList.add('hidden');
+                return;
+            }
+
+            try {
+                app = initializeApp(finalFirebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                storage = getStorage(app); // 初始化 Firebase Storage
+
+                // 認證流程
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        document.getElementById('teacher-user-id').innerText = `教師用戶ID: ${currentUserId}`;
+                        document.getElementById('student-user-id').innerText = `學員用戶ID: ${currentUserId}`;
+                        
+                        // 啟動模式監聽 (無論教師或學生都需要監聽)
+                        setupModeListener();
+
+                        // 渲染初始畫面
+                        renderView();
+                        document.getElementById('loading-message').classList.add('hidden');
+                    } else {
+                        // 嘗試使用自定義 Token 或匿名登入
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase 初始化或認證失敗:", error);
+                document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('loading-message').classList.add('hidden');
+            }
+        });
+
+        // --- 卦象生成邏輯 (Teacher Utility Logic) ---
+
+        /**
+         * 獲取當前日期時間 (UTC+8)
+         */
+        const getCurrentDateTime = () => {
+            const now = new Date();
+            // 轉換到 UTC+8 (台灣時區)
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            const utc8Offset = 8 * 3600000;
+            const utc8 = new Date(utc + utc8Offset);
+
+            const options = {
+                year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false,
+                timeZone: 'Asia/Taipei'
+            };
+            return utc8.toLocaleString('zh-TW', options);
+        }
+
+        /**
+         * 隨機抽取 5 個不重複的棋子。
+         */
+        const drawFivePieces = () => {
+            const availableIndices = Array.from({ length: ALL_PIECES.length }, (_, i) => i);
+            const selectedIndices = [];
+            
+            while (selectedIndices.length < 5) {
+                const randomIndex = Math.floor(Math.random() * availableIndices.length);
+                const pieceIndex = availableIndices.splice(randomIndex, 1)[0];
+                selectedIndices.push(pieceIndex);
+            }
+
+            // 將抽出的棋子與固定的位置結合
+            return selectedIndices.map((index, i) => ({
+                ...POSITIONS[i], // 位置資訊 (name, meaning, detail, id)
+                piece: ALL_PIECES[index] // 棋子資訊 (char, color, element, organ, etc.)
+            }));
+        }
+
+        /**
+         * 渲染棋子到介面。
+         */
+        const renderPieces = (pieces) => {
+            const container = document.getElementById('teacher-guaxiang-board');
+            const detailsDiv = document.getElementById('teacher-guaxiang-details');
+            
+            container.innerHTML = '';
+            detailsDiv.innerHTML = '';
+
+            let detailsHTML = '<ul class="list-disc list-inside space-y-2">';
+
+            pieces.forEach((item) => {
+                const pieceDiv = document.createElement('div');
+                pieceDiv.className = 'flex justify-center items-center';
+                pieceDiv.innerHTML = `
+                    <div class="piece-circle ${item.piece.color === '紅' ? 'red-piece' : 'black-piece'}">
+                        ${item.piece.char}
+                    </div>
+                `;
+                // title 屬性提供滑鼠懸停提示
+                pieceDiv.title = `位置: ${item.name} (${item.meaning})\n棋子: ${item.piece.name}\n五行: ${item.piece.element}\n臟腑: ${item.piece.organ}\n代表: ${item.piece.meaning}`;
+
+                container.appendChild(pieceDiv);
+
+                // 生成詳細解釋 HTML
+                detailsHTML += `
+                    <li>
+                        <strong class="text-indigo-600">${item.name} (${item.meaning})</strong>: 
+                        抽到【<span class="${item.piece.color === '紅' ? 'text-red-600' : 'text-gray-800'}">${item.piece.name}</span>】
+                        | 五行: <span class="font-bold">${item.piece.element}</span> 
+                        | 臟腑: ${item.piece.organ} 
+                        | 能量核心: ${item.piece.meaning}
+                    </li>
+                `;
+            });
+            
+            detailsHTML += '</ul>';
+            detailsDiv.innerHTML = detailsHTML;
+        }
+
+        /**
+         * 執行卜卦主程式。
+         */
+        window.executeDivination = () => {
+            // 1. 生成棋子
+            drawnPieces = drawFivePieces();
+
+            // 2. 渲染棋盤與詳細資訊
+            renderPieces(drawnPieces);
+
+            // 3. 更新介面資訊
+            document.getElementById('teacher-datetime-output').textContent = getCurrentDateTime();
+            document.getElementById('divination-result-area').classList.remove('hidden');
+
+            console.log("卦象已生成:", drawnPieces);
+        }
+
+        // --- 視圖管理 (View Management) ---
+
+        // 全局切換視圖
+        window.changeView = (newView) => {
+            currentView = newView;
+            renderView();
+        }
+        
+        // 渲染當前視圖
+        const renderView = () => {
+            document.querySelectorAll('.view-panel').forEach(panel => {
+                panel.classList.add('hidden');
+            });
+            document.getElementById(`view-${currentView}`).classList.remove('hidden');
+
+            // 進入教師介面時，啟動學生答案監聽
+            if (currentView === 'teacher') {
+                document.getElementById('teacher-mode-menu').classList.remove('hidden');
+                document.getElementById('teacher-monitoring').classList.add('hidden');
+                setupAnswerListener();
+            } else if (currentView === 'student' && studentName) {
+                // 進入學生介面時，根據 activeMode 渲染具體模式
+                updateStudentInteractionUI();
+            } else if (currentView === 'home' || currentView === 'student-login') {
+                // 離開時停止答案監聽
+                if (unsubscribeStudentAnswers) {
+                    unsubscribeStudentAnswers();
+                    unsubscribeStudentAnswers = null;
+                }
+            }
+        }
+
+        // --- 教師端邏輯 (Teacher Logic) ---
+
+        // 設置當前互動模式
+        window.startInteraction = async (mode) => {
+            if (!db) return console.error("Firestore is not initialized.");
+            
+            // 重置所有學生的作答狀態，確保新活動開始時資料是新的
+            try {
+                // 獲取所有學生文檔
+                const q = query(collection(db, ANSWERS_COL_PATH));
+                const snapshot = await getDocs(q);
+                const batch = writeBatch(db);
+                
+                // 批量更新學生的 mode 和 answer 欄位
+                snapshot.forEach(docSnap => {
+                    batch.set(docSnap.ref, { 
+                        mode: mode,
+                        answer: '',
+                        name: docSnap.id, // 保留學生姓名作為 ID
+                        timestamp: new Date()
+                    }, { merge: true }); // 使用 merge: true 避免覆蓋其他潛在欄位
+                });
+                await batch.commit();
+                
+                // 設定教師控制模式
+                await setDoc(doc(db, CONTROL_DOC_PATH), { active_mode: mode });
+                activeMode = mode;
+                
+                // 更新教師介面顯示
+                document.getElementById('teacher-mode-menu').classList.add('hidden');
+                document.getElementById('teacher-monitoring').classList.remove('hidden');
+                document.getElementById('current-mode-title').innerText = `當前模式: ${getModeName(mode)}`;
+
+            } catch (e) {
+                console.error("啟動互動失敗:", e);
+                // 這裡我們不使用 alert，而是使用 console.log 或 UI 提示
+            }
+        }
+
+        // 結束互動
+        window.endInteraction = async () => {
+            if (!db) return;
+            try {
+                // 將模式設為 waiting
+                await setDoc(doc(db, CONTROL_DOC_PATH), { active_mode: 'waiting' });
+                activeMode = 'waiting';
+                
+                // 更新教師介面顯示
+                document.getElementById('teacher-mode-menu').classList.remove('hidden');
+                document.getElementById('teacher-monitoring').classList.add('hidden');
+                document.getElementById('current-mode-title').innerText = '';
+
+                // 清空顯示結果
+                document.getElementById('student-results-list').innerHTML = '<p class="text-gray-500 text-center">等待老師選擇模式...</p>';
+
+            } catch (e) {
+                console.error("結束互動失敗:", e);
+            }
+        }
+
+        // 設置學生答案監聽器 (教師端)
+        const setupAnswerListener = () => {
+            if (unsubscribeStudentAnswers) unsubscribeStudentAnswers();
+
+            const q = query(collection(db, ANSWERS_COL_PATH));
+            unsubscribeStudentAnswers = onSnapshot(q, (snapshot) => {
+                const resultsList = document.getElementById('student-results-list');
+                resultsList.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    resultsList.innerHTML = '<p class="text-gray-500 text-center">目前沒有學生連線或作答。</p>';
+                    return;
+                }
+
+                const students = [];
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    // 僅顯示當前模式的答案
+                    if (data.name && data.mode === activeMode) { 
+                        students.push({ id: docSnap.id, ...data });
+                    }
+                });
+
+                if (students.length === 0 && activeMode !== 'waiting') {
+                    resultsList.innerHTML = '<p class="text-gray-500 text-center">尚未有學生針對當前模式作答。</p>';
+                    return;
+                }
+                
+                // 排序 (例如按作答時間)
+                students.sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+
+                students.forEach(student => {
+                    let answerContent = student.answer;
+                    
+                    if (activeMode === 'D' && answerContent.startsWith('http')) {
+                        // 繪圖題顯示圖片
+                        answerContent = `<img src="${answerContent}" class="max-h-24 w-auto object-contain rounded border" alt="學生卦象圖">`;
+                    } else if (activeMode === 'C' && answerContent && answerContent.length > 50) {
+                        // 文字題過長則截斷
+                        answerContent = `<span class="text-sm text-gray-700">${answerContent.substring(0, 50)}...</span>`;
+                    } else if (!answerContent || answerContent === '') {
+                        answerContent = '<span class="text-gray-400">尚未作答</span>';
+                    } else {
+                        answerContent = `<span class="font-bold text-lg text-indigo-700">${answerContent}</span>`;
+                    }
+
+                    const listItem = `
+                        <div class="student-result-item">
+                            <div class="font-bold text-gray-800">${student.name}</div>
+                            <div>${answerContent}</div>
+                        </div>
+                    `;
+                    resultsList.innerHTML += listItem;
+                });
+            });
+        }
+
+        // --- 學生端邏輯 (Student Logic) ---
+
+        // 學生登入
+        window.studentLogin = async () => {
+            const nameInput = document.getElementById('student-name-input');
+            const name = nameInput.value.trim();
+
+            if (!name) {
+                // 這裡我們不使用 alert()
+                console.warn('請輸入您的姓名');
+                return;
+            }
+
+            // 使用 trim() 過後的姓名作為 Firestore 文件 ID
+            studentName = name; 
+            document.getElementById('student-display-name').innerText = `歡迎您，${studentName}！`;
+            changeView('student');
+            
+            // 學生首次登入，向答案集合中寫入一個初始化文檔，以便教師端能監測到該學生
+            try {
+                await setDoc(doc(db, ANSWERS_COL_PATH, studentName), {
+                    name: studentName,
+                    mode: activeMode, // 使用當前模式 (可能是 'waiting')
+                    answer: '',
+                    timestamp: new Date()
+                }, { merge: true });
+            } catch (e) {
+                console.error("學生初始化寫入失敗:", e);
+            }
+        }
+
+        // 設置模式監聽器 (學生/教師通用)
+        const setupModeListener = () => {
+            if (unsubscribeTeacherControl) unsubscribeTeacherControl();
+
+            unsubscribeTeacherControl = onSnapshot(doc(db, CONTROL_DOC_PATH), (docSnap) => {
+                let newMode = 'waiting';
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    newMode = data.active_mode || 'waiting';
+                }
+                
+                if (activeMode !== newMode) {
+                    activeMode = newMode;
+                    console.log(`模式已切換至: ${activeMode}`);
+                    
+                    if (currentView === 'student') {
+                        updateStudentInteractionUI();
+                        // 模式切換時，如果不是 'waiting'，則重置按鈕狀態
+                        if (activeMode !== 'waiting') {
+                            resetStudentButtons();
+                        }
+                    }
+                    if (currentView === 'teacher' && activeMode !== 'waiting') {
+                        document.getElementById('current-mode-title').innerText = `當前模式: ${getModeName(activeMode)}`;
+                    }
+                }
+            }, (error) => {
+                console.error("監聽教師控制失敗:", error);
+            });
+        }
+        
+        // 根據 activeMode 更新學生互動介面
+        const updateStudentInteractionUI = () => {
+            const waitingDiv = document.getElementById('student-waiting');
+            const interactionArea = document.getElementById('student-interaction-area');
+            const modePanels = document.querySelectorAll('.student-mode-panel');
+            
+            // 重置所有模式面板
+            modePanels.forEach(panel => panel.classList.add('hidden'));
+
+            if (activeMode === 'waiting') {
+                waitingDiv.classList.remove('hidden');
+                interactionArea.classList.add('hidden');
+            } else {
+                waitingDiv.classList.add('hidden');
+                interactionArea.classList.remove('hidden');
+                const targetPanel = document.getElementById(`student-mode-${activeMode}`);
+                if (targetPanel) {
+                    targetPanel.classList.remove('hidden');
+                }
+            }
+        }
+        
+        // 重置學生端按鈕狀態
+        const resetStudentButtons = () => {
+            document.querySelectorAll('.answer-button').forEach(btn => {
+                btn.classList.remove('disabled', 'bg-gray-400');
+                // 重新設置原始顏色
+                const onclickAttr = btn.getAttribute('onclick');
+                const answerMatch = onclickAttr ? onclickAttr.match(/'([^']+)'/) : null;
+                const answer = answerMatch ? answerMatch[1] : '';
+
+                let colorClass = '';
+                if (activeMode === 'A') {
+                    colorClass = (answer === 'O' ? 'bg-green-500' : 'bg-red-500');
+                } else if (activeMode === 'B') {
+                    const colors = {'1': 'bg-indigo-500', '2': 'bg-yellow-500', '3': 'bg-pink-500', '4': 'bg-teal-500'};
+                    colorClass = colors[answer];
+                }
+                // 移除所有舊顏色類，添加 hover 和新顏色
+                btn.className = btn.className.replace(/\b(bg-[\w-]+-\d+|shadow-xl)\b/g, '');
+                btn.classList.add(colorClass, 'hover:bg-opacity-90', 'transition', 'duration-300');
+                btn.disabled = false;
+            });
+            document.getElementById('text-input-area').value = '';
+            document.getElementById('text-input-area').disabled = false;
+            document.getElementById('text-submit-message').innerText = '';
+            
+            // 重設繪圖板
+            const canvas = document.getElementById('drawingCanvas');
+            // 只有在繪圖題模式 D 被啟動時才進行初始化和清空
+            if (activeMode === 'D' && canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                document.getElementById('submit-drawing-btn').disabled = false;
+                document.getElementById('submit-drawing-btn').innerText = '送出卦象 (上傳圖片)';
+                document.getElementById('drawing-submit-message').innerText = '';
+            }
+        }
+
+        // 提交是非題/選擇題答案
+        window.submitAnswer = async (answer) => {
+            if (!studentName || activeMode === 'waiting' || !db) return;
+
+            try {
+                // 禁用按鈕以避免重複點擊
+                const targetBtn = document.querySelector(`.answer-button[onclick*="'${answer}'"]`);
+                if (targetBtn) {
+                    document.querySelectorAll('.answer-button').forEach(btn => {
+                        // 移除所有 hover/顏色/shadow 效果，統一變灰禁用
+                        btn.className = btn.className.replace(/\b(bg-[\w-]+-\d+|hover:bg-opacity-90|shadow-xl|transition|duration-300)\b/g, '');
+                        btn.classList.add('disabled', 'bg-gray-400');
+                        btn.disabled = true;
+                    });
+                    // 高亮選中的答案
+                    targetBtn.classList.remove('bg-gray-400');
+                    targetBtn.classList.add('bg-indigo-500', 'shadow-xl'); 
+                }
+                
+                await setDoc(doc(db, ANSWERS_COL_PATH, studentName), {
+                    name: studentName,
+                    mode: activeMode,
+                    answer: answer,
+                    timestamp: new Date()
+                });
+                console.log(`學員 ${studentName} 提交答案: ${answer}`);
+                // alertMessage(`已成功送出答案：${answer}`, 'success');
+            } catch (e) {
+                console.error("提交答案失敗:", e);
+                // alertMessage('提交失敗，請重試。', 'error');
+            }
+        }
+        
+        // 提交文字題答案
+        window.submitTextAnswer = async () => {
+            if (!studentName || activeMode !== 'C' || !db) return;
+            
+            const textarea = document.getElementById('text-input-area');
+            const answer = textarea.value.trim();
+
+            if (!answer) {
+                console.warn('文字內容不可為空。');
+                return;
+            }
+            
+            try {
+                textarea.disabled = true;
+                await setDoc(doc(db, ANSWERS_COL_PATH, studentName), {
+                    name: studentName,
+                    mode: activeMode,
+                    answer: answer,
+                    timestamp: new Date()
+                });
+                document.getElementById('text-submit-message').innerText = '✅ 答案已成功送出！';
+                console.log(`學員 ${studentName} 提交文字: ${answer}`);
+            } catch (e) {
+                console.error("提交文字答案失敗:", e);
+                textarea.disabled = false;
+                document.getElementById('text-submit-message').innerText = '❌ 提交失敗，請重試。';
+            }
+        }
+        
+        // --- 繪圖板邏輯 (Canvas Drawing Logic) ---
+        
+        let canvas, ctx;
+        let isDrawing = false;
+        let currentPenColor = 'black';
+        let currentLineWidth = 8;
+        let isEraserMode = false;
+
+        // 確保在 DOM 載入後初始化 Canvas
+        window.onload = () => {
+            canvas = document.getElementById('drawingCanvas');
+            if (canvas) {
+                ctx = canvas.getContext('2d');
+                
+                // 設定初始繪圖樣式
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = currentLineWidth;
+                ctx.strokeStyle = currentPenColor;
+
+                // 繪圖事件監聽 (適用於滑鼠和觸控)
+                canvas.addEventListener('mousedown', startDrawing);
+                canvas.addEventListener('mousemove', draw);
+                canvas.addEventListener('mouseup', stopDrawing);
+                canvas.addEventListener('mouseout', stopDrawing);
+                
+                canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); // 防止滾動
+                    startDrawing(e.touches[0]);
+                });
+                canvas.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    draw(e.touches[0]);
+                });
+                canvas.addEventListener('touchend', stopDrawing);
+
+                // 調整 Canvas 尺寸以適應容器寬度
+                const resizeCanvas = () => {
+                    const containerWidth = canvas.parentElement.clientWidth;
+                    canvas.width = containerWidth;
+                    // 維持一個合適的比例
+                    canvas.height = 300; 
+                    // 重新設定 ctx 屬性以防止縮放導致的錯誤
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.lineWidth = currentLineWidth;
+                    ctx.strokeStyle = currentPenColor;
+                    ctx.globalCompositeOperation = isEraserMode ? 'destination-out' : 'source-over';
+                };
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+
+                // 初始化繪圖工具的視覺狀態
+                updateToolActiveState('pen', currentPenColor);
+                updateDrawingLineWidth(currentLineWidth);
+            }
+        };
+        
+        const getCoordinates = (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            // 使用 clientX/Y 確保同時處理滑鼠和觸控事件
+            const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+            const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+            
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        const startDrawing = (event) => {
+            if (activeMode !== 'D' || document.getElementById('submit-drawing-btn').disabled || !ctx) return;
+            isDrawing = true;
+            const { x, y } = getCoordinates(event);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        const draw = (event) => {
+            if (!isDrawing || activeMode !== 'D' || !ctx) return;
+            const { x, y } = getCoordinates(event);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+
+        const stopDrawing = () => {
+            isDrawing = false;
+            if (ctx) ctx.closePath();
+        }
+
+        window.setPen = (color) => {
+            if (!ctx) return;
+            isEraserMode = false;
+            currentPenColor = color;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = currentPenColor;
+            ctx.lineWidth = currentLineWidth;
+            updateToolActiveState('pen', color);
+            updateDrawingLineWidth(currentLineWidth);
+        }
+
+        window.setEraser = () => {
+            if (!ctx) return;
+            isEraserMode = true;
+            ctx.globalCompositeOperation = 'destination-out'; // 實現橡皮擦效果
+            ctx.lineWidth = currentLineWidth;
+            updateToolActiveState('eraser');
+            updateDrawingLineWidth(currentLineWidth);
+        }
+
+        window.setLineWidth = (width) => {
+            if (!ctx) return;
+            currentLineWidth = width;
+            ctx.lineWidth = currentLineWidth;
+            updateDrawingLineWidth(width);
+        }
+
+        window.clearCanvas = () => {
+            if (!ctx) return;
+            // 清空畫布需要暫時切換到 'source-over' 模式以防止橡皮擦模式下的問題
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // 切換回原來的模式
+            ctx.globalCompositeOperation = isEraserMode ? 'destination-out' : 'source-over';
+        }
+
+        // 更新工具列視覺狀態
+        const updateToolActiveState = (type, value) => {
+            // 處理顏色按鈕的邊框
+            document.querySelectorAll('[onclick^="setPen"]').forEach(btn => {
+                btn.classList.remove('border-gray-600');
+                btn.classList.add('border-transparent');
+            });
+
+            if (type === 'pen') {
+                const targetBtn = document.querySelector(`.bg-${value === 'black' ? 'black' : value + '-600'}[onclick*="'${value}'"]`);
+                if (targetBtn) {
+                    targetBtn.classList.remove('border-transparent');
+                    targetBtn.classList.add('border-gray-600');
+                }
+            }
+            
+            // 處理橡皮擦按鈕的 ring
+            const eraserBtn = document.querySelector('[onclick="setEraser()"]');
+            if (eraserBtn) {
+                eraserBtn.classList.remove('ring-4', 'ring-yellow-300');
+                if (type === 'eraser') {
+                    eraserBtn.classList.add('ring-4', 'ring-yellow-300');
+                }
+            }
+        }
+        
+        const updateDrawingLineWidth = (width) => {
+             // 處理粗細按鈕的 ring
+             document.querySelectorAll('[onclick^="setLineWidth"]').forEach(btn => {
+                btn.classList.remove('ring-2', 'ring-offset-2', 'ring-gray-700');
+            });
+
+            const targetBtn = document.querySelector(`[onclick="setLineWidth(${width})"]`);
+            if(targetBtn) {
+                targetBtn.classList.add('ring-2', 'ring-offset-2', 'ring-gray-700');
+            }
+        }
+        
+        // 繪圖題提交 (上傳到 Storage)
+        window.submitDrawing = async () => {
+            if (!studentName || activeMode !== 'D' || !storage || !canvas) return;
+
+            const submitBtn = document.getElementById('submit-drawing-btn');
+            const messageDiv = document.getElementById('drawing-submit-message');
+            
+            submitBtn.disabled = true;
+            submitBtn.innerText = '圖片上傳中...';
+            messageDiv.innerText = '';
+
+            try {
+                // 1. 獲取 Canvas 數據 URL (PNG 格式)
+                const dataURL = canvas.toDataURL('image/png');
+                
+                // 2. 建立 Storage 參考路徑
+                const fileName = `${studentName}_${Date.now()}.png`;
+                const storageRef = ref(storage, `artifacts/${finalAppId}/drawings/${fileName}`);
+                
+                // 3. 上傳圖片
+                // uploadString 接受 base64 格式
+                const uploadResult = await uploadString(storageRef, dataURL, 'data_url');
+                
+                // 4. 取得圖片的公開 URL
+                const downloadURL = await getDownloadURL(uploadResult.ref);
+
+                // 5. 儲存 URL 到 Firestore
+                await setDoc(doc(db, ANSWERS_COL_PATH, studentName), {
+                    name: studentName,
+                    mode: activeMode,
+                    answer: downloadURL, // 儲存圖片 URL
+                    timestamp: new Date()
+                });
+
+                submitBtn.innerText = '✅ 已成功送出卦象';
+                messageDiv.innerText = '圖片連結已儲存至資料庫。';
+                console.log(`學員 ${studentName} 提交繪圖 URL: ${downloadURL}`);
+
+            } catch (e) {
+                console.error("提交繪圖失敗:", e);
+                submitBtn.disabled = false;
+                submitBtn.innerText = '送出卦象 (上傳圖片)';
+                messageDiv.innerText = '❌ 提交失敗，請重試。';
+            }
+        }
+
+        // --- 輔助函數 ---
+        const getModeName = (mode) => {
+            switch (mode) {
+                case 'A': return '是非題';
+                case 'B': return '選擇題';
+                case 'C': return '文字題';
+                case 'D': return '卦象題';
+                default: return '等待中';
+            }
+        }
+
+        // 將重要函數暴露給 window (因為使用了 type="module")
+        window.changeView = changeView;
+        window.startInteraction = startInteraction;
+        window.endInteraction = endInteraction;
+        window.studentLogin = studentLogin;
+        window.submitAnswer = submitAnswer;
+        window.submitTextAnswer = submitTextAnswer;
+        window.submitDrawing = submitDrawing;
+        window.setPen = setPen;
+        window.setEraser = setEraser;
+        window.setLineWidth = setLineWidth;
+        window.clearCanvas = clearCanvas;
+        window.executeDivination = executeDivination; // 暴露新功能
+
+    </script>
+</body>
+</html>
